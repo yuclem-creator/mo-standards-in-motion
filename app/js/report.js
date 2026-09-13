@@ -332,34 +332,65 @@ function dcApiGet(cfg, token, path) {
    rather than labels — resolve them against the field definitions once
    per export. Map: lowercase field name → { option id → label } */
 var dcFieldDefs = null;
+/* Docebo's additional-field definitions have appeared under several endpoint
+   shapes across versions — try each, take the first that returns a list */
+var DC_FIELD_ENDPOINTS = [
+  "/manage/v1/user/fields?page_size=200",
+  "/manage/v1/userfields?page_size=200",
+  "/manage/v1/user/field?page_size=200"
+];
+
 function dcFieldDefMap(cfg, token) {
   if (dcFieldDefs) return Promise.resolve(dcFieldDefs);
   dcFieldDefs = {};
-  return dcApiGet(cfg, token, "/manage/v1/user/fields?page_size=200")
-    .then(function (j) {
-      var items = (j && j.data && (j.data.items || j.data)) || [];
-      if (!Array.isArray(items)) items = [];
-      items.forEach(function (f) {
-        var name = (f.name || f.title || "").toLowerCase();
-        var els = f.elements || f.options || [];
-        var map = {};
-        (Array.isArray(els) ? els : []).forEach(function (el) {
-          var id = el.id != null ? String(el.id) : "";
-          var label = el.name || el.value || el.label || "";
-          if (id && label) map[id] = label;
-        });
-        if (name) dcFieldDefs[name] = map;
+  var chain = Promise.resolve(null);
+  DC_FIELD_ENDPOINTS.forEach(function (ep) {
+    chain = chain.then(function (found) {
+      if (found) return found;
+      return dcApiGet(cfg, token, ep).then(function (j) {
+        var items = j && j.data && (j.data.items || (Array.isArray(j.data) ? j.data : null));
+        if (Array.isArray(items) && items.length) {
+          console.log("[MOReport] user field definitions via " + ep + " —", items.length, "fields");
+          return items;
+        }
+        return null;
       });
+    });
+  });
+  return chain.then(function (items) {
+    if (!items) {
+      console.warn("[MOReport] no user-field definition endpoint answered — dropdown values stay as IDs");
       return dcFieldDefs;
-    })
-    .catch(function () { return dcFieldDefs; });
+    }
+    console.log("[MOReport] sample field definition:", JSON.stringify(items[0]).slice(0, 500));
+    items.forEach(function (f) {
+      var keys = [];
+      if (f.name) keys.push(String(f.name).toLowerCase());
+      if (f.title) keys.push(String(f.title).toLowerCase());
+      if (f.id != null) keys.push("id:" + f.id);
+      /* the option list can hide under several property names */
+      var els = null;
+      ["elements", "options", "option_values", "values", "items"].forEach(function (k) {
+        if (!els && Array.isArray(f[k]) && f[k].length) els = f[k];
+      });
+      var map = {};
+      (els || []).forEach(function (el) {
+        var id = el.id != null ? String(el.id) : (el.value != null ? String(el.value) : "");
+        var label = el.name || el.label || el.title || el.text || (el.value != null && el.id != null ? String(el.value) : "");
+        if (id && label && id !== label) map[id] = label;
+      });
+      keys.forEach(function (k) { dcFieldDefs[k] = map; });
+    });
+    return dcFieldDefs;
+  })
+  .catch(function () { return dcFieldDefs; });
 }
 
-function dcResolveVal(name, val) {
+function dcResolveVal(name, val, fid) {
   if (val == null) return "";
   /* multi-select dropdowns may arrive as an array (or csv) of option ids */
   var parts = Array.isArray(val) ? val.map(String) : String(val).split(/\s*,\s*/);
-  var map = (dcFieldDefs && dcFieldDefs[name.toLowerCase()]) || {};
+  var map = (dcFieldDefs && (dcFieldDefs[name.toLowerCase()] || dcFieldDefs["id:" + fid])) || {};
   var out = parts.map(function (p) { return (/^\d+$/.test(p) && map[p]) ? map[p] : p; });
   return out.filter(Boolean).join(", ");
 }
@@ -370,9 +401,9 @@ function dcPickField(fields, re) {
     var name = f.name || f.title || "";
     if (f.value == null || f.value === "" || !re.test(name)) continue;
     /* some payloads carry the label alongside the id — prefer it */
-    var label = f.value_name || f.label || f.element_name || "";
+    var label = f.value_name || f.label || f.element_name || f.value_label || "";
     if (label) return label;
-    return dcResolveVal(name, f.value);
+    return dcResolveVal(name, f.value, f.id != null ? f.id : (f.field_id != null ? f.field_id : ""));
   }
   return "";
 }
@@ -393,6 +424,10 @@ function dcLookupUser(cfg, token, email) {
         var d = (u && u.data) || {};
         var fields = d.additional_fields || d.fields || [];
         if (!Array.isArray(fields)) fields = [];
+        if (fields.length && !dcPickField._logged) {
+          dcPickField._logged = true;
+          console.log("[MOReport] sample user additional_fields:", JSON.stringify(fields).slice(0, 600));
+        }
         return {
           hotel     : dcPickField(fields, /hotel|property|resort/i),
           department: dcPickField(fields, /depart|division/i),

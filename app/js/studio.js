@@ -512,8 +512,14 @@ function exportPackage(fmt) {
   btn.textContent = "Packaging…";
 
   var zip = new JSZip();
+  /* cloud-linked videos stay as URLs — the package ships no video bytes at
+     all for those reels, which is what keeps a 20-reel course small */
+  var cloudVideo = !!(course.config && course.config.cloudVideo);
+  var linked = 0;
   var mediaFiles = course.reels.map(function (r, i) {
-    return r.srcType === "none" ? "" : "media/reel" + (i + 1) + ".mp4";
+    if (r.srcType === "none") return "";
+    if (cloudVideo && r.src && /^https?:/.test(r.src)) { linked++; return ""; }
+    return "media/reel" + (i + 1) + ".mp4";
   });
 
   // tip-card images ride along under their existing media/tips/ paths
@@ -542,7 +548,9 @@ function exportPackage(fmt) {
   var data = JSON.parse(JSON.stringify(course));
   data.reels.forEach(function (r, i) {
     if (mediaFiles[i]) { r.src = mediaFiles[i]; r.srcType = "packaged"; }
-    else { r.src = ""; r.srcType = "none"; }
+    else if (cloudVideo && course.reels[i].src && /^https?:/.test(course.reels[i].src)) {
+      r.src = course.reels[i].src; r.srcType = "storage";   /* linked, not packed */
+    } else { r.src = ""; r.srcType = "none"; }
   });
   if (data.assessment && data.assessment.questions) {
     assessImgs.forEach(function (ai) {
@@ -603,7 +611,7 @@ function exportPackage(fmt) {
     btn.disabled = false;
     btn.textContent = xapi ? "Export xAPI" : "Export SCORM";
     var mb = (blob.size / 1048576).toFixed(1);
-    toast("Package exported — " + mb + " MB");
+    toast("Package exported — " + mb + " MB" + (linked ? " · " + linked + " video(s) linked from the cloud" : ""));
     /* non-blocking: keep a versioned copy in the cloud lane */
     savePackageVersion(fmt, blob).then(function (v) {
       if (v) toast("Cloud version v" + v + " saved (" + (xapi ? "xAPI" : "SCORM") + ")");
@@ -917,8 +925,14 @@ function wireSettings() {
 
   $("btnSettings").addEventListener("click", function () {
     $("settingsModal").hidden = false;
+    $("optCloudVideo").checked = !!(course.config && course.config.cloudVideo);
     syncAssessmentPanel();
     dcSyncPanel();
+  });
+  $("optCloudVideo").addEventListener("change", function () {
+    course.config = course.config || {};
+    course.config.cloudVideo = $("optCloudVideo").checked;
+    markDirty();
   });
   $("btnCloseSettings").addEventListener("click", function () { $("settingsModal").hidden = true; });
   $("btnConnect").addEventListener("click", function () { connectSb(false); });

@@ -257,7 +257,9 @@ function build() {
     el.className = "reel";
     el.style.top = (i * 100) + "%";
     el.innerHTML =
-      '<video' + (r.src ? ' src="' + r.src + '"' : '') + ' playsinline webkit-playsinline preload="auto" muted></video>' +
+      /* 10–20+ reels per course: only the first video preloads in full —
+         the rest fetch metadata up front and stream when swiped to */
+      '<video' + (r.src ? ' src="' + r.src + '"' : '') + ' playsinline webkit-playsinline preload="' + (i === 0 ? "auto" : "metadata") + '" muted></video>' +
       '<div class="scrim"></div>' +
       '<div class="reel-seal"><div class="ring"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6" stroke="#b9975b" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div><span class="seal-label"></span></div>' +
       '<div class="reel-body"></div>';
