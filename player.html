@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Standards in Motion — Mandarin Oriental</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="ambient" aria-hidden="true">
+  <div class="ambient-fan">MO</div>
+</div>
+
+<main class="stage" id="stage" aria-label="Standards in Motion learning reel">
+
+  <!-- Segmented progress (stories-style) -->
+  <div class="segments" id="segments"></div>
+
+  <!-- Top chrome -->
+  <header class="chrome-top">
+    <div class="brand">
+      <span class="brand-rule"></span>
+      <span class="brand-word">MANDARIN&nbsp;ORIENTAL</span>
+      <span class="brand-sub">Standards in Motion</span>
+    </div>
+    <div class="counter" id="counter">01&nbsp;/&nbsp;03</div>
+  </header>
+
+  <!-- Reels -->
+  <div class="reel-track" id="reelTrack"></div>
+
+  <!-- Right rail -->
+  <nav class="rail" aria-label="Reel controls">
+    <button class="rail-btn" id="btnSound" aria-label="Toggle sound">
+      <svg viewBox="0 0 24 24" class="ic ic-muted"><path d="M3 9v6h4l5 5V4L7 9H3z" fill="currentColor"/><path d="M16 8l6 8M22 8l-6 8" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 24 24" class="ic ic-sound" style="display:none"><path d="M3 9v6h4l5 5V4L7 9H3z" fill="currentColor"/><path d="M16.5 8.5a5 5 0 010 7M19 6a8.5 8.5 0 010 12" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+      <span class="rail-label" id="soundLabel">Sound</span>
+    </button>
+    <button class="rail-btn" id="btnReplay" aria-label="Replay this standard">
+      <svg viewBox="0 0 24 24" class="ic"><path d="M12 5V1L7 6l5 5V7a6 6 0 11-6 6H4a8 8 0 108-8z" fill="currentColor"/></svg>
+      <span class="rail-label">Replay</span>
+    </button>
+    <button class="rail-btn rail-nav" id="btnPrev" aria-label="Previous standard">
+      <svg viewBox="0 0 24 24" class="ic"><path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="rail-btn rail-nav" id="btnNext" aria-label="Next standard">
+      <svg viewBox="0 0 24 24" class="ic"><path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+  </nav>
+
+  <!-- Swipe hint -->
+  <div class="swipe-hint" id="swipeHint">
+    <svg viewBox="0 0 24 24" class="ic"><path d="M6 14l6-6 6 6" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>Swipe up for the next standard</span>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast" role="status"></div>
+
+  <!-- Beat: fade to black -->
+  <div class="beat" id="beat"></div>
+
+  <!-- Completion -->
+  <section class="complete" id="complete" aria-hidden="true">
+    <div class="complete-fan">MO</div>
+    <div class="complete-rule"></div>
+    <h2 class="complete-title">Series Complete</h2>
+    <p class="complete-sub" id="completeSub">Service Essentials · Three Standards</p>
+    <div class="complete-score"><span id="scoreVal">100</span><em>%</em></div>
+    <p class="complete-status" id="lmsStatus">Completion recorded</p>
+    <div class="complete-actions">
+      <button class="btn-ghost" id="btnRewatch">Rewatch Series</button>
+      <button class="btn-gold" id="btnExit">Finish</button>
+    </div>
+    <button class="reset-link" id="btnReset">Reset my progress</button>
+  </section>
+
+</main>
+
+<script src="js/i18n.js?v=20260913h"></script>
+<script src="js/scorm.js?v=20260913h"></script>
+<script src="js/xapi.js?v=20260913h"></script>
+<script src="js/course.js?v=20260913h"></script>
+<script src="js/player.js?v=20260913h"></script>
+</body>
+</html>

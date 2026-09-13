@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reel Studio — Authoring · Mandarin Oriental</title>
+<link rel="stylesheet" href="css/studio.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+</head>
+<body>
+
+<!-- ======================= Top bar ======================= -->
+<header class="topbar">
+  <a class="back-link" href="reels.html">‹ Reel Studio</a>
+  <div class="topbar-brand">
+    <span class="brand-rule"></span>
+    <div>
+      <div class="brand-word">REEL&nbsp;STUDIO</div>
+      <div class="brand-sub">Reel authoring · Mandarin Oriental</div>
+    </div>
+  </div>
+
+  <div class="topbar-course">
+    <input type="text" id="courseTitle" class="course-title" placeholder="Untitled series" spellcheck="false">
+    <span class="status-pill" id="statusPill">Draft</span>
+    <span class="mode-pill" id="modePill">Local</span>
+  </div>
+
+  <div class="topbar-actions">
+    <button class="tbtn" id="btnNew">New</button>
+    <button class="tbtn" id="btnOpen">Open</button>
+    <button class="tbtn" id="btnPublish">Publish</button>
+    <button class="tbtn tbtn-gold" id="btnExport">Export SCORM</button>
+    <button class="tbtn" id="btnExportXapi">Export xAPI</button>
+    <button class="tbtn" id="btnSettings" aria-label="Settings">⚙</button>
+  </div>
+</header>
+
+<!-- ======================= Workspace ======================= -->
+<main class="workspace">
+
+  <!-- Reel list -->
+  <aside class="rail-left">
+    <div class="pane-head">
+      <span>Reels</span>
+      <button class="mini-btn" id="btnAddReel">+ Add</button>
+    </div>
+    <div class="reel-list" id="reelList"></div>
+    <div class="rail-note" id="storageNote"></div>
+  </aside>
+
+  <!-- Editor -->
+  <section class="editor" id="editor">
+    <div class="editor-empty" id="editorEmpty">
+      <div class="empty-fan">MO</div>
+      <p>Select a reel to edit, or add your first standard.</p>
+    </div>
+
+    <div class="editor-body" id="editorBody" hidden>
+
+      <div class="ed-section">
+        <h3 class="ed-h">Video</h3>
+        <div class="video-row">
+          <div class="video-thumb" id="videoThumb">
+            <video id="thumbVideo" muted playsinline loop></video>
+            <span class="video-thumb-empty" id="thumbEmpty">No video</span>
+          </div>
+          <div class="video-meta">
+            <div class="video-src" id="videoSrc">—</div>
+            <div class="video-stats" id="videoStats"></div>
+            <div class="video-actions">
+              <label class="mini-btn file-btn">Upload MP4<input type="file" id="fileInput" accept="video/mp4,video/*" hidden></label>
+              <select id="demoClipSelect" class="mini-select">
+                <option value="">Use demo clip…</option>
+                <option value="media/reel1.mp4">Arrival Welcome</option>
+                <option value="media/reel2.mp4">Tableside Grace</option>
+                <option value="media/reel3.mp4">Perfect Turndown</option>
+              </select>
+            </div>
+            <p class="video-spec">Export spec for Docebo: MP4 · H.264 · 720×1280 · ≤ 2 Mbps · 20–40 s</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="ed-section">
+        <h3 class="ed-h">Standard</h3>
+        <label class="fld"><span>Department</span><input type="text" id="fDept" placeholder="Front Office"></label>
+        <label class="fld"><span>Title</span><input type="text" id="fTitle" placeholder="The Arrival Welcome"></label>
+        <label class="fld"><span>Key point 1</span><input type="text" id="fPoint1"></label>
+        <label class="fld"><span>Key point 2</span><input type="text" id="fPoint2"></label>
+        <label class="fld"><span>Key point 3</span><input type="text" id="fPoint3"></label>
+      </div>
+
+      <div class="ed-section">
+        <h3 class="ed-h">Knowledge check</h3>
+        <label class="fld"><span>Question</span><input type="text" id="fQuizQ"></label>
+        <div class="opt-row" data-opt="0"><input type="radio" name="correct" id="fCorrect0"><input type="text" id="fOpt0" placeholder="Option A"></div>
+        <div class="opt-row" data-opt="1"><input type="radio" name="correct" id="fCorrect1"><input type="text" id="fOpt1" placeholder="Option B"></div>
+        <div class="opt-row" data-opt="2"><input type="radio" name="correct" id="fCorrect2"><input type="text" id="fOpt2" placeholder="Option C"></div>
+        <p class="opt-hint">Select the radio beside the correct answer.</p>
+        <label class="fld"><span>Rationale (shown after answering)</span><input type="text" id="fQuizWhy"></label>
+      </div>
+
+      <div class="ed-section ed-danger">
+        <button class="tbtn" id="btnMoveUp">↑ Move up</button>
+        <button class="tbtn" id="btnMoveDown">↓ Move down</button>
+        <button class="tbtn tbtn-danger" id="btnDeleteReel">Delete reel</button>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Live preview -->
+  <aside class="rail-right">
+    <div class="pane-head">
+      <span>Live preview</span>
+      <button class="mini-btn" id="btnRefreshPreview">↻</button>
+    </div>
+    <div class="phone">
+      <iframe id="previewFrame" src="player.html?draft=1" title="Course preview"></iframe>
+    </div>
+    <p class="preview-note">Preview runs the exact runtime that ships in the SCORM package.</p>
+  </aside>
+
+</main>
+
+<!-- ======================= Open-course modal ======================= -->
+<div class="modal" id="openModal" hidden>
+  <div class="modal-card">
+    <h3 class="modal-h">Open series</h3>
+    <div class="course-list" id="courseList"></div>
+    <div class="modal-actions"><button class="tbtn" id="btnCloseOpen">Close</button></div>
+  </div>
+</div>
+
+<!-- ======================= Settings modal ======================= -->
+<div class="modal" id="settingsModal" hidden>
+  <div class="modal-card">
+    <h3 class="modal-h">Backend — Supabase</h3>
+    <label class="fld"><span>Project URL</span><input type="text" id="sbUrl" placeholder="https://xxxx.supabase.co"></label>
+    <label class="fld"><span>Anon key</span><input type="password" id="sbKey" placeholder="eyJhbGciOi…"></label>
+    <div class="modal-actions">
+      <button class="tbtn tbtn-gold" id="btnConnect">Connect</button>
+    </div>
+
+    <div id="authBlock" hidden>
+      <h3 class="modal-h">Author sign-in</h3>
+      <div id="signedOut">
+        <label class="fld"><span>Email</span><input type="email" id="sbEmail"></label>
+        <label class="fld"><span>Password</span><input type="password" id="sbPass"></label>
+        <div class="modal-actions"><button class="tbtn tbtn-gold" id="btnSignIn">Sign in</button></div>
+      </div>
+      <div id="signedIn" hidden>
+        <p class="signed-as" id="signedAs"></p>
+        <div class="modal-actions"><button class="tbtn" id="btnSignOut">Sign out</button></div>
+      </div>
+    </div>
+
+    <h3 class="modal-h">Assessment</h3>
+    <label class="fld"><span>Course mode</span>
+      <select id="asEntry">
+        <option value="reels">Exercise reels, then assessment</option>
+        <option value="assessment">Assessment only (no reels)</option>
+        <option value="pre">Pre-assessment, then exercise reels</option>
+        <option value="preOnly">Pre-assessment only (baseline capture)</option>
+      </select>
+    </label>
+    <label class="fld fld-check">
+      <input type="checkbox" id="asEnabled">
+      <span>Enable the assessment</span>
+    </label>
+    <div id="asFields" hidden>
+      <div id="asFinalOnly">
+        <div class="as-grid">
+          <label class="fld"><span>Pass mark %</span><input type="number" id="asPass" min="0" max="100" step="5"></label>
+          <label class="fld"><span>Tries allowed (0 = unlimited)</span><input type="number" id="asTries" min="0" max="50" step="1"></label>
+        </div>
+        <label class="fld"><span>If a colleague fails</span>
+          <select id="asMode">
+            <option value="all">Retake the full assessment</option>
+            <option value="wrongOnly">Retake only the missed questions</option>
+          </select>
+        </label>
+      </div>
+      <div class="as-qhead">
+        <span>Assessment questions</span>
+        <button class="mini-btn" id="btnAddAsQ">+ Add</button>
+      </div>
+      <div id="asQList"></div>
+    </div>
+
+    <details class="setup-details">
+      <summary>First-time setup SQL</summary>
+      <pre id="setupSql">create table sim_courses (
+  id uuid primary key default gen_random_uuid(),
+  title text not null,
+  status text not null default 'draft',
+  data jsonb not null,
+  updated_at timestamptz not null default now(),
+  created_by uuid default auth.uid()
+);
+
+alter table sim_courses enable row level security;
+
+create policy "authors full access"
+  on sim_courses for all to authenticated
+  using (true) with check (true);
+
+create policy "anon read published"
+  on sim_courses for select to anon
+  using (status = 'published');
+
+-- Storage: create a PUBLIC bucket named  sim-media
+-- with insert restricted to authenticated authors.
+
+-- Per-user, per-question results pool (one row per answer).
+-- The SCORM player streams rows here; export to CSV for AI analysis.
+create table sim_assessment_rows (
+  id bigint generated always as identity primary key,
+  at timestamptz not null default now(),
+  course text,
+  entry text,
+  user_id text,
+  user_name text,
+  kind text,            -- question | exercise | summary
+  interaction_id text,  -- e.g. assess-q2-try3, pre-q1, assessment-try-2
+  chosen text,
+  correct_answer text,
+  result text,          -- correct | wrong | neutral
+  score int,
+  try int,
+  passed boolean
+);
+
+alter table sim_assessment_rows enable row level security;
+
+-- colleagues insert their own rows; only authors can read
+create policy "anon insert results"
+  on sim_assessment_rows for insert to anon
+  with check (true);
+
+create policy "authors read results"
+  on sim_assessment_rows for select to authenticated
+  using (true);</pre>
+    </details>
+
+    <h3 class="modal-h">Docebo xAPI report</h3>
+    <p class="as-empty">Used by the <b>Results CSV</b> button to pull per-question answers from The Loop+ LRS. The LRS needs your superadmin login — client credentials alone get a 401.</p>
+    <div class="as-grid">
+      <label class="fld"><span>Domain</span><input type="text" id="dcDomain" placeholder="theloopplus.mohg.com"></label>
+      <label class="fld"><span>Client ID</span><input type="text" id="dcClientId" placeholder="xapi-report"></label>
+    </div>
+    <label class="fld"><span>Client secret</span><input type="text" id="dcSecret"></label>
+    <div class="as-grid">
+      <label class="fld"><span>Your Docebo username</span><input type="text" id="dcUser" autocomplete="off"></label>
+      <label class="fld"><span>Your Docebo password</span><input type="password" id="dcPass" autocomplete="new-password"></label>
+    </div>
+
+    <div class="modal-actions"><button class="tbtn" id="btnCloseSettings">Close</button></div>
+  </div>
+</div>
+
+<div class="toast-host" id="toastHost"></div>
+
+<script src="js/i18n.js?v=20260913h"></script>
+<script src="js/report.js?v=20260913h"></script>
+<script src="js/studio.js?v=20260913h"></script>
+</body>
+</html>

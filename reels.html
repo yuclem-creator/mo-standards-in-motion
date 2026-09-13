@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reel Studio — Mandarin Oriental</title>
+<link rel="stylesheet" href="css/home.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body class="lib-body">
+
+<!-- ======================= Top bar ======================= -->
+<header class="topbar">
+  <a class="back-link" href="index.html">‹ Content Studio</a>
+  <div class="topbar-brand">
+    <span class="brand-rule"></span>
+    <div>
+      <div class="brand-word">REEL&nbsp;STUDIO</div>
+      <div class="brand-sub">Digital reel series · Mandarin Oriental</div>
+    </div>
+  </div>
+  <div class="topbar-spacer"></div>
+  <button class="gold-btn" id="btnNewSeries">+ New reel series</button>
+</header>
+
+<!-- ======================= Library ======================= -->
+<main class="lib-main">
+  <div class="lib">
+    <h1 class="lib-title">Reels</h1>
+    <p class="lib-sub">Every reel series in this studio — open one to edit, or start a new standard.</p>
+
+    <div class="series-list" id="seriesList"></div>
+
+    <div class="lib-empty" id="libEmpty" hidden>
+      <div class="lib-empty-fan">MO</div>
+      <p>No reel series yet — the first standard starts here.</p>
+      <button class="gold-btn" id="btnEmptyNew">+ New reel series</button>
+    </div>
+
+    <a class="demo-row" href="player.html">
+      <span class="dr-kicker">Live demo</span>
+      <span class="dr-text">Watch the demo series — the colleague experience, exactly as it ships</span>
+      <span class="dr-go">Play&nbsp;→</span>
+    </a>
+
+    <button class="demo-row report-row" id="btnXapiReport" type="button">
+      <span class="dr-kicker">Insights</span>
+      <span class="dr-text">Export every colleague's answers across all xAPI courses in The Loop+ — one CSV, ready for AI analysis</span>
+      <span class="dr-go">Results&nbsp;CSV&nbsp;↓</span>
+    </button>
+    <p class="report-status" id="reportStatus" hidden></p>
+
+    <button class="demo-row" id="btnTestCourse" type="button">
+      <span class="dr-kicker">Quick start</span>
+      <span class="dr-text">Create a ready-made xAPI test course — 3 standards with exercise questions + 3-question final assessment, ready to export and upload</span>
+      <span class="dr-go">Create&nbsp;→</span>
+    </button>
+
+    <button class="report-cfg-link" id="btnReportCfg" type="button">Connection settings</button>
+    <div class="report-cfg" id="reportCfg" hidden>
+      <p class="report-cfg-note">Docebo connection for the Results CSV export. App credentials are prefilled; add your Docebo login so the LRS accepts the pull.</p>
+      <div class="report-cfg-grid">
+        <label class="fld"><span>Domain</span><input type="text" id="dcDomain"></label>
+        <label class="fld"><span>Client ID</span><input type="text" id="dcClientId"></label>
+      </div>
+      <label class="fld"><span>Client secret</span><input type="text" id="dcSecret"></label>
+      <div class="report-cfg-grid">
+        <label class="fld"><span>Your Docebo username</span><input type="text" id="dcUser" autocomplete="off"></label>
+        <label class="fld"><span>Your Docebo password</span><input type="password" id="dcPass" autocomplete="new-password"></label>
+      </div>
+      <label class="fld"><span>Only statements since (optional — e.g. 2026-09-01)</span><input type="date" id="dcSince"></label>
+      <label class="fld fld-check"><input type="checkbox" id="dcSimOnly" checked><span>Standards in Motion courses only (untick to pull the whole shared LRS)</span></label>
+      <p class="report-cfg-saved" id="reportCfgSaved" hidden>Saved locally in this browser.</p>
+      <button class="mini-btn" id="btnTestConn" type="button">Test connection</button>
+      <pre class="report-test-log" id="reportTestLog" hidden></pre>
+    </div>
+
+    <p class="lib-foot" id="libFoot"></p>
+  </div>
+</main>
+
+<div class="toast-host" id="toastHost"></div>
+
+<script src="js/report.js?v=20260913h"></script>
+<script src="js/library.js?v=20260913h"></script>
+</body>
+</html>

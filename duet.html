@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<title>Duet — Standards in Motion · Mandarin Oriental</title>
+<link rel="stylesheet" href="css/duet.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+
+<div class="ambient" aria-hidden="true"><div class="ambient-fan">MO</div></div>
+
+<main class="stage" id="stage">
+
+  <header class="chrome-top">
+    <div class="brand">
+      <span class="brand-rule"></span>
+      <span class="brand-word">MANDARIN&nbsp;ORIENTAL</span>
+      <span class="brand-sub">Duet · Practise the standard</span>
+    </div>
+  </header>
+
+  <!-- ============ Screen 1 · pick a standard ============ -->
+  <section class="screen show" id="scrPick">
+    <div class="pick-head">
+      <h1 class="pick-title">The Duet</h1>
+      <p class="pick-sub">The master clip plays on one side — you perform
+        the same standard on the other. Submit your take for review.</p>
+    </div>
+    <div class="pick-list" id="pickList"></div>
+    <p class="pick-note">Camera stays on your device until you choose Submit.</p>
+  </section>
+
+  <!-- ============ Screen 2 · record ============ -->
+  <section class="screen" id="scrRecord" aria-hidden="true">
+    <div class="duet-split">
+      <div class="pane">
+        <video id="masterVideo" playsinline webkit-playsinline preload="auto"></video>
+        <span class="pane-tag">Master</span>
+      </div>
+      <div class="pane">
+        <video id="camVideo" playsinline webkit-playsinline muted autoplay></video>
+        <span class="pane-tag you">You</span>
+        <div class="cam-fallback" id="camFallback" hidden>
+          <p>Camera unavailable in this preview.</p>
+          <button class="btn-ghost" id="btnSample">Use a sample take</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="countdown" id="countdown" hidden>3</div>
+
+    <div class="duet-hud">
+      <div class="hud-title" id="recTitle">—</div>
+      <div class="hud-controls">
+        <button class="btn-ghost" id="btnBackPick">‹ Standards</button>
+        <button class="rec-btn" id="btnRecord" aria-label="Start recording"><span class="rec-dot"></span></button>
+        <span class="rec-time" id="recTime">00:00</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Screen 3 · review + submit ============ -->
+  <section class="screen" id="scrReview" aria-hidden="true">
+    <div class="duet-split">
+      <div class="pane">
+        <video id="revMaster" playsinline webkit-playsinline preload="auto"></video>
+        <span class="pane-tag">Master</span>
+      </div>
+      <div class="pane">
+        <video id="revTake" playsinline webkit-playsinline preload="auto" muted></video>
+        <span class="pane-tag you">You</span>
+      </div>
+    </div>
+
+    <div class="duet-hud">
+      <div class="hud-title">Your take</div>
+      <div class="hud-review">
+        <button class="btn-gold" id="btnPlayReview">▶ Play both</button>
+        <label class="fld-name"><span>Your name</span><input type="text" id="fName" placeholder="e.g. Mei Chen" autocomplete="name"></label>
+        <div class="review-actions">
+          <button class="btn-ghost" id="btnRerecord">Re-record</button>
+          <button class="btn-gold" id="btnSubmit">Submit take</button>
+        </div>
+        <p class="hud-note" id="submitNote">Submits to your training record for manager review.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Screen 4 · done ============ -->
+  <section class="screen" id="scrDone" aria-hidden="true">
+    <div class="done-inner">
+      <div class="done-fan">MO</div>
+      <div class="done-rule"></div>
+      <h2 class="done-title">Take submitted</h2>
+      <p class="done-sub" id="doneSub">Your take is with your manager for review.</p>
+      <div class="complete-actions">
+        <button class="btn-ghost" id="btnAnother">Another standard</button>
+        <button class="btn-gold" id="btnBackPlayer">Back to the series</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status"></div>
+
+</main>
+
+<script src="js/i18n.js"></script>
+<script src="js/duet.js"></script>
+</body>
+</html>
