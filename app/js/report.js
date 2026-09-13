@@ -326,12 +326,51 @@ function dcApiGet(cfg, token, path) {
   }).catch(function () { clearTimeout(timer); return null; });
 }
 
+/* Docebo dropdown additional fields come back as option IDs (320, 236…)
+   rather than labels — resolve them against the field definitions once
+   per export. Map: lowercase field name → { option id → label } */
+var dcFieldDefs = null;
+function dcFieldDefMap(cfg, token) {
+  if (dcFieldDefs) return Promise.resolve(dcFieldDefs);
+  dcFieldDefs = {};
+  return dcApiGet(cfg, token, "/manage/v1/user/fields?page_size=200")
+    .then(function (j) {
+      var items = (j && j.data && (j.data.items || j.data)) || [];
+      if (!Array.isArray(items)) items = [];
+      items.forEach(function (f) {
+        var name = (f.name || f.title || "").toLowerCase();
+        var els = f.elements || f.options || [];
+        var map = {};
+        (Array.isArray(els) ? els : []).forEach(function (el) {
+          var id = el.id != null ? String(el.id) : "";
+          var label = el.name || el.value || el.label || "";
+          if (id && label) map[id] = label;
+        });
+        if (name) dcFieldDefs[name] = map;
+      });
+      return dcFieldDefs;
+    })
+    .catch(function () { return dcFieldDefs; });
+}
+
+function dcResolveVal(name, val) {
+  if (val == null) return "";
+  /* multi-select dropdowns may arrive as an array (or csv) of option ids */
+  var parts = Array.isArray(val) ? val.map(String) : String(val).split(/\s*,\s*/);
+  var map = (dcFieldDefs && dcFieldDefs[name.toLowerCase()]) || {};
+  var out = parts.map(function (p) { return (/^\d+$/.test(p) && map[p]) ? map[p] : p; });
+  return out.filter(Boolean).join(", ");
+}
+
 function dcPickField(fields, re) {
   for (var i = 0; i < fields.length; i++) {
     var f = fields[i] || {};
     var name = f.name || f.title || "";
-    var val = f.value != null ? String(f.value) : "";
-    if (val && re.test(name)) return val;
+    if (f.value == null || f.value === "" || !re.test(name)) continue;
+    /* some payloads carry the label alongside the id — prefer it */
+    var label = f.value_name || f.label || f.element_name || "";
+    if (label) return label;
+    return dcResolveVal(name, f.value);
   }
   return "";
 }
@@ -372,6 +411,8 @@ function dcEnrichUsers(rows, cfg) {
   if (!list.length) return Promise.resolve(rows);
   var cache = {};
   return dcToken(cfg).then(function (token) {
+    return dcFieldDefMap(cfg, token).then(function () { return token; });
+  }).then(function (token) {
     var i = 0;
     function next() {
       if (i >= list.length) return null;
