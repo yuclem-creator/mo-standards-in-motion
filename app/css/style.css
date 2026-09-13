@@ -81,6 +81,12 @@ body{font-family:var(--sans);color:var(--ivory);-webkit-font-smoothing:antialias
 /* ---------- Reels ---------- */
 .reel-track{position:absolute;inset:0;transition:transform .55s cubic-bezier(.22,.9,.28,1)}
 .reel{position:absolute;left:0;width:100%;height:100%;overflow:hidden;background:#000}
+.reel-skip{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:30;
+  display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;
+  background:rgba(13,12,10,.88);border:1px solid var(--gold-soft,#8a7340);border-radius:3px;
+  padding:18px 26px;color:inherit;font:inherit;text-align:center}
+.reel-skip span{font-family:var(--serif,serif);font-size:18px;color:#efe9dc}
+.reel-skip em{font-style:normal;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#b9975b}
 .reel video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .reel .scrim{position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(180deg,rgba(6,6,5,.42) 0%,transparent 26%,transparent 52%,rgba(6,6,5,.82) 100%)}

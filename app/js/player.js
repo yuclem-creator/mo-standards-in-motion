@@ -438,6 +438,8 @@ function wireVideo(video, i) {
     if (i !== index || !video.duration) return;
     var pct = Math.min(100, (video.currentTime / video.duration) * 100);
     reels[i].segFill.style.width = pct + "%";
+    /* 'ended' is unreliable on some mobile browsers — 95% counts as watched */
+    if (pct >= 95) markWatched(i);
   });
 
   video.addEventListener("ended", function () {
@@ -448,9 +450,28 @@ function wireVideo(video, i) {
     }
   });
 
+  /* a broken video must NOT silently unlock the gate (that made reels
+     freely swipable in the LMS when the CDN failed to serve the file) —
+     surface a deliberate tap-to-continue instead */
   video.addEventListener("error", function () {
+    if (!video.getAttribute("src")) return;   /* videoless reel — handled at build */
+    showSkipGate(i);
+  });
+}
+
+function showSkipGate(i) {
+  var reel = reels[i];
+  if (!reel || reel.el.querySelector(".reel-skip")) return;
+  var btn = document.createElement("button");
+  btn.className = "reel-skip";
+  btn.type = "button";
+  btn.innerHTML = "<span>Video unavailable</span><em>Tap to continue to the question</em>";
+  btn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    btn.remove();
     markWatched(i);
   });
+  reel.el.appendChild(btn);
 }
 
 function markWatched(i) {
