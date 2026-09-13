@@ -233,7 +233,7 @@ function dcFlatten(st) {
   /* every other result extension, besides the ones we surface as columns */
   var otherExt = {};
   Object.keys(ext).forEach(function (k) {
-    if (k !== MO_EXT + "/correct-answer") otherExt[k] = ext[k];
+    if (k !== MO_EXT + "/correct-answer" && k !== MO_EXT + "/response-text" && k !== MO_EXT + "/correct-answer-text") otherExt[k] = ext[k];
   });
   var otherCtxExt = {};
   Object.keys(ctxExt).forEach(function (k) {
@@ -258,7 +258,9 @@ function dcFlatten(st) {
     question_text  : dcLang(def.description),
     topic          : dcLang(def.name),
     response       : result.response || "",
+    response_text  : ext[MO_EXT + "/response-text"] || "",
     correct_answer : ext[MO_EXT + "/correct-answer"] || "",
+    correct_answer_text : ext[MO_EXT + "/correct-answer-text"] || "",
     success        : result.success === undefined ? "" : result.success,
     try            : ctxExt[MO_EXT + "/try"] || "",
     score_raw      : score.raw === undefined ? "" : score.raw,
@@ -300,7 +302,7 @@ function dcFlatten(st) {
 var DC_COLS = ["timestamp","verb","colleague","username","email",
   "hotel","department","job_title","registration",
   "course_name","course_activity","question_id","question_text","topic",
-  "response","correct_answer","success","try","score_raw","score_scaled","completion",
+  "response","response_text","correct_answer","correct_answer_text","success","try","score_raw","score_scaled","completion",
   "statement_id","stored","version","actor_object_type","actor_account_homepage",
   "actor_mbox_sha1sum","actor_openid","actor_members","object_id","object_type",
   "object_name","object_description","object_activity_type","duration",

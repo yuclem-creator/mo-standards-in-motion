@@ -129,6 +129,8 @@ function reportQ(inter, extra) {
       correct: inter.correct,
       success: inter.result === "correct",
       try    : extra.try,
+      chosenText : extra.chosenText  || null,
+      correctText: extra.correctText || null,
       duration: qShownAt ? isoDur(Date.now() - qShownAt) : null
     });
   }
@@ -543,7 +545,8 @@ function showQuiz(i) {
         chosen : "ABC"[chosen],
         correct: "ABC"[REELS[i].answer],
         result : correct ? "correct" : "wrong"
-      }, { kind: "exercise", reel: REELS[i].id, text: q.q, topic: reelText(i).title });
+      }, { kind: "exercise", reel: REELS[i].id, text: q.q, topic: reelText(i).title,
+           chosenText: q.options[chosen], correctText: q.options[REELS[i].answer] });
       updateScore();
       MOScorm.report(state);
 
@@ -799,6 +802,7 @@ function askAssessQuestion(list, idx) {
     '<div class="quiz-inner">' +
       '<div class="quiz-kicker"><span class="quiz-rule"></span><span>' +
         ui("assessKicker") + ' · ' + ui("question") + ' ' + (idx + 1) + ' / ' + list.length + '</span></div>' +
+      (q.img ? '<div class="assess-img-wrap"><img class="assess-img" src="' + q.img + '" alt=""></div>' : "") +
       '<h2 class="quiz-q">' + q.q + '</h2>' +
       '<div class="quiz-options">' +
         q.options.map(function (opt, n) {
@@ -832,7 +836,8 @@ function askAssessQuestion(list, idx) {
         chosen : "ABC"[chosen],
         correct: "ABC"[q.answer],
         result : correct ? "correct" : "wrong"
-      }, { text: q.q, topic: q.topic || null, try: assessState.tries + 1 });
+      }, { text: q.q, topic: q.topic || null, try: assessState.tries + 1,
+           chosenText: q.options[chosen], correctText: q.options[q.answer] });
       setTimeout(function () {
         if (idx + 1 < list.length) askAssessQuestion(list, idx + 1);
         else gradeAssessment();

@@ -13,7 +13,7 @@
   "use strict";
 
   var XAPI_VERSION = "1.0.2";   /* Docebo LRS supports up to 1.0.2 */
-  var BUILD = "2026-09-13i";    /* stamped into the console so we can verify which build is live */
+  var BUILD = "2026-09-13k";    /* stamped into the console so we can verify which build is live */
   var ADL = "http://adlnet.gov/expapi";
   var MO_EXT = "https://www.mandarinoriental.com/xapi/extensions";
 
@@ -228,6 +228,10 @@
       extensions: {}
     };
     st.result.extensions[MO_EXT + "/correct-answer"] = String(opts.correct);
+    /* the option TEXTS, not just the letters — so the CSV can feed AI
+       analytics without a lookup table back to the course */
+    if (opts.chosenText)  st.result.extensions[MO_EXT + "/response-text"] = String(opts.chosenText);
+    if (opts.correctText) st.result.extensions[MO_EXT + "/correct-answer-text"] = String(opts.correctText);
     if (opts.duration) st.result.duration = opts.duration;   /* ISO 8601, e.g. PT7S — time on this question */
     if (opts.try != null) st.context.extensions = {};
     if (opts.try != null) st.context.extensions[MO_EXT + "/try"] = opts.try;

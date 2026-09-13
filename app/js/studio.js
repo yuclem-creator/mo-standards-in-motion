@@ -16,6 +16,7 @@ var selected = -1;
 var sb = null;              // supabase client
 var cloud = false;          // signed-in cloud lane active
 var blobStore = {};         // reelId -> File (local-lane uploads, session only)
+var assessImgStore = {};    // questionId -> File (local-lane assessment images, session only)
 var saveTimer = null;
 var previewTimer = null;
 
@@ -523,12 +524,31 @@ function exportPackage(fmt) {
     });
   });
 
+  // assessment question images — packed under media/assess/ so the package
+  // is self-contained (works whether the image was a session blob or a cloud URL)
+  var assessImgs = [];   // { n, path, file|null, url|null }
+  (course.assessment && course.assessment.questions || []).forEach(function (q, n) {
+    var file = q.id && assessImgStore[q.id];
+    var remote = q.img && /^https?:/.test(q.img);
+    if (!file && !remote) return;
+    var ext = file
+      ? ((file.name.split(".").pop() || "jpg").toLowerCase())
+      : ((q.img.split("?")[0].split(".").pop() || "jpg").toLowerCase());
+    if (!/^(jpg|jpeg|png|webp|gif)$/.test(ext)) ext = "jpg";
+    assessImgs.push({ n: n, path: "media/assess/q" + (n + 1) + "." + ext, file: file || null, url: file ? null : q.img });
+  });
+
   // course data with packaged media paths
   var data = JSON.parse(JSON.stringify(course));
   data.reels.forEach(function (r, i) {
     if (mediaFiles[i]) { r.src = mediaFiles[i]; r.srcType = "packaged"; }
     else { r.src = ""; r.srcType = "none"; }
   });
+  if (data.assessment && data.assessment.questions) {
+    assessImgs.forEach(function (ai) {
+      data.assessment.questions[ai.n].img = ai.path;
+    });
+  }
 
   var jobs = [];
 
@@ -552,6 +572,20 @@ function exportPackage(fmt) {
       if (!res.ok) throw new Error("fetch " + p);
       return res.blob();
     }).then(function (blob) { zip.file(p, blob); }));
+  });
+
+  assessImgs.forEach(function (ai) {
+    if (ai.file) { zip.file(ai.path, ai.file); return; }
+    /* cloud-hosted image — pack a copy; if it can't be fetched, leave the
+       question pointing at the URL instead of failing the whole export */
+    jobs.push(fetch(ai.url).then(function (res) {
+      if (!res.ok) throw new Error("fetch " + ai.url);
+      return res.blob();
+    }).then(function (blob) {
+      zip.file(ai.path, blob);
+    }).catch(function () {
+      data.assessment.questions[ai.n].img = ai.url;
+    }));
   });
 
   Promise.all(jobs).then(function () {
@@ -752,7 +786,34 @@ function wireSettings() {
   }
 
   function blankAsQ() {
-    return { q: "", options: ["", "", ""], answer: 0, why: "" };
+    return { id: "asq-" + Math.random().toString(36).slice(2, 10), q: "", img: "", options: ["", "", ""], answer: 0, why: "" };
+  }
+
+  function handleAsImg(qi, file) {
+    var q = course.assessment.questions[qi];
+    if (!q) return;
+    q.id = q.id || ("asq-" + Math.random().toString(36).slice(2, 10));
+    if (cloud && sb) {
+      var ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      var path = course.id + "/" + q.id + "." + ext;
+      sb.storage.from("sim-media").upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" })
+        .then(function (res) {
+          if (res.error) { toast("Image upload failed — staying local for this session"); }
+          else {
+            q.img = sb.storage.from("sim-media").getPublicUrl(path).data.publicUrl + "?v=" + Date.now();
+            delete assessImgStore[q.id];
+            renderAsQuestions(); markDirty();
+            return;
+          }
+          assessImgStore[q.id] = file;
+          q.img = URL.createObjectURL(file);
+          renderAsQuestions(); markDirty();
+        });
+    } else {
+      assessImgStore[q.id] = file;
+      q.img = URL.createObjectURL(file);
+      renderAsQuestions(); markDirty();
+    }
   }
 
   function renderAsQuestions() {
@@ -770,6 +831,11 @@ function wireSettings() {
         '<div class="as-qtop"><span class="as-qnum">' + String(qi + 1).padStart(2, "0") + '</span>' +
         '<button class="mini-btn as-qdel" data-q="' + qi + '">Delete</button></div>' +
         '<label class="fld"><span>Question</span><input type="text" data-q="' + qi + '" data-f="q" value="' + escAttr(q.q) + '"></label>' +
+        '<div class="as-img-row">' +
+          (q.img ? '<img class="as-img-prev" src="' + escAttr(q.img) + '" alt="">' : '<span class="as-img-none">No image</span>') +
+          '<label class="mini-btn file-btn">Image<input type="file" class="as-img-file" data-q="' + qi + '" accept="image/*" hidden></label>' +
+          (q.img ? '<button class="mini-btn as-img-del" data-q="' + qi + '">Remove</button>' : "") +
+        '</div>' +
         q.options.map(function (opt, n) {
           return '<div class="opt-row"><input type="radio" name="asCorrect' + qi + '" data-q="' + qi + '" data-n="' + n + '"' +
             (q.answer === n ? " checked" : "") + '>' +
@@ -792,6 +858,22 @@ function wireSettings() {
     host.querySelectorAll("input[type=radio]").forEach(function (rad) {
       rad.addEventListener("change", function () {
         course.assessment.questions[parseInt(rad.getAttribute("data-q"), 10)].answer = parseInt(rad.getAttribute("data-n"), 10);
+        markDirty();
+      });
+    });
+    host.querySelectorAll(".as-img-file").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var f = inp.files && inp.files[0];
+        if (f) handleAsImg(parseInt(inp.getAttribute("data-q"), 10), f);
+      });
+    });
+    host.querySelectorAll(".as-img-del").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var q = course.assessment.questions[parseInt(btn.getAttribute("data-q"), 10)];
+        if (!q) return;
+        if (q.id) delete assessImgStore[q.id];
+        q.img = "";
+        renderAsQuestions();
         markDirty();
       });
     });
