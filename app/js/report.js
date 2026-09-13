@@ -246,6 +246,11 @@ function dcFlatten(st) {
     colleague      : actor.name || "",
     username       : username,
     email          : (actor.mbox || "").replace("mailto:", ""),
+    /* Docebo user additional fields — filled in by dcEnrichUsers after the
+       pull (blank when the profile lookup is unavailable) */
+    hotel          : "",
+    department     : "",
+    job_title      : "",
     registration   : ctx.registration || "",
     course_name    : courseName,
     course_activity: courseActivity,
@@ -292,7 +297,8 @@ function dcFlatten(st) {
     raw_json            : jsonCell(st)   /* nothing lost — the complete original statement */
   };
 }
-var DC_COLS = ["timestamp","verb","colleague","username","email","registration",
+var DC_COLS = ["timestamp","verb","colleague","username","email",
+  "hotel","department","job_title","registration",
   "course_name","course_activity","question_id","question_text","topic",
   "response","correct_answer","success","try","score_raw","score_scaled","completion",
   "statement_id","stored","version","actor_object_type","actor_account_homepage",
@@ -302,6 +308,92 @@ var DC_COLS = ["timestamp","verb","colleague","username","email","registration",
   "context_platform","context_language","context_revision","context_grouping",
   "context_category","context_other","context_extensions","authority",
   "attachments_count","raw_json"];
+/* ============================================================
+   Docebo user additional fields (hotel / department / job title)
+   Pulled from the Docebo user API at export time and joined onto
+   every row by email — the course code never has to know them,
+   which is exactly what lets the heat map carry property tags.
+   ============================================================ */
+function dcApiGet(cfg, token, path) {
+  var ctrl = new AbortController();
+  var timer = setTimeout(function () { ctrl.abort(); }, 20000);
+  return fetch(dcBase(cfg) + path, {
+    headers: { "Authorization": "Bearer " + token, "Accept": "application/json" },
+    signal: ctrl.signal
+  }).then(function (res) {
+    clearTimeout(timer);
+    return res.ok ? res.json() : null;
+  }).catch(function () { clearTimeout(timer); return null; });
+}
+
+function dcPickField(fields, re) {
+  for (var i = 0; i < fields.length; i++) {
+    var f = fields[i] || {};
+    var name = f.name || f.title || "";
+    var val = f.value != null ? String(f.value) : "";
+    if (val && re.test(name)) return val;
+  }
+  return "";
+}
+
+function dcLookupUser(cfg, token, email) {
+  var empty = { hotel: "", department: "", job_title: "" };
+  return dcApiGet(cfg, token, "/manage/v1/user?search_text=" + encodeURIComponent(email) + "&page_size=5")
+    .then(function (j) {
+      var items = (j && j.data && j.data.items) || [];
+      var hit = items.filter(function (u) {
+        return (u.email || "").toLowerCase() === email.toLowerCase();
+      })[0] || items.filter(function (u) {
+        return (u.username || "").toLowerCase() === email.toLowerCase();
+      })[0] || items[0];
+      var id = hit && (hit.user_id || hit.id);
+      if (!id) return empty;
+      return dcApiGet(cfg, token, "/manage/v1/user/" + id).then(function (u) {
+        var d = (u && u.data) || {};
+        var fields = d.additional_fields || d.fields || [];
+        if (!Array.isArray(fields)) fields = [];
+        return {
+          hotel     : dcPickField(fields, /hotel|property|resort/i),
+          department: dcPickField(fields, /depart|division/i),
+          job_title : dcPickField(fields, /job|title|position|role/i)
+        };
+      });
+    })
+    .catch(function () { return empty; });
+}
+
+function dcEnrichUsers(rows, cfg) {
+  var emails = {};
+  rows.forEach(function (r) {
+    var e = r.email || ((r.username || "").indexOf("@") >= 0 ? r.username : "");
+    if (e) emails[e.toLowerCase()] = true;
+  });
+  var list = Object.keys(emails);
+  if (!list.length) return Promise.resolve(rows);
+  var cache = {};
+  return dcToken(cfg).then(function (token) {
+    var i = 0;
+    function next() {
+      if (i >= list.length) return null;
+      var e = list[i++];
+      return dcLookupUser(cfg, token, e).then(function (f) {
+        cache[e] = f;
+        var el = $("reportStatus");
+        if (el) { el.hidden = false; el.textContent = "Pulling colleague profiles… " + i + " / " + list.length; }
+        return next();
+      });
+    }
+    return next();
+  }).then(function () {
+    rows.forEach(function (r) {
+      var e = (r.email || ((r.username || "").indexOf("@") >= 0 ? r.username : "")).toLowerCase();
+      var f = cache[e] || {};
+      r.hotel = f.hotel || ""; r.department = f.department || ""; r.job_title = f.job_title || "";
+    });
+    return rows;
+  }).catch(function () { return rows; });   /* profiles are a bonus — never block the export */
+}
+
 function dcCsv(rows) {
   var cols = DC_COLS;
   function cell(v) {
@@ -387,15 +479,17 @@ function runXapiReport(btn) {
           return;
         }
       }
-      var blob = new Blob([dcCsv(rows)], { type: "text/csv;charset=utf-8" });
+      return dcEnrichUsers(rows, cfg).then(function () {
+        var blob = new Blob([dcCsv(rows)], { type: "text/csv;charset=utf-8" });
       var a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
       a.download = "standards_in_motion_results_" + new Date().toISOString().slice(0, 10) + ".csv";
       document.body.appendChild(a); a.click(); a.remove();
       var ppl = {};
       rows.forEach(function (r) { if (r.username || r.email) ppl[r.username || r.email] = 1; });
-      status("Last pull: " + sts.length + " LRS rows scanned · " + rows.length + " rows exported · " + Object.keys(ppl).length + " colleagues · " + new Date().toLocaleTimeString());
-      toast(rows.length + " rows · " + Object.keys(ppl).length + " colleagues → CSV downloaded", 8000);
+        status("Last pull: " + sts.length + " LRS rows scanned · " + rows.length + " rows exported · " + Object.keys(ppl).length + " colleagues · " + new Date().toLocaleTimeString());
+        toast(rows.length + " rows · " + Object.keys(ppl).length + " colleagues → CSV downloaded", 8000);
+      });
     })
     .catch(function (e) {
       status("Last pull failed: " + e.message);

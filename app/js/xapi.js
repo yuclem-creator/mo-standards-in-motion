@@ -13,7 +13,7 @@
   "use strict";
 
   var XAPI_VERSION = "1.0.2";   /* Docebo LRS supports up to 1.0.2 */
-  var BUILD = "2026-09-13h";    /* stamped into the console so we can verify which build is live */
+  var BUILD = "2026-09-13i";    /* stamped into the console so we can verify which build is live */
   var ADL = "http://adlnet.gov/expapi";
   var MO_EXT = "https://www.mandarinoriental.com/xapi/extensions";
 
@@ -79,8 +79,13 @@
     st.object = { id: activityId, objectType: "Activity" };
     if (courseTitle) st.object.definition = { name: { "en-US": courseTitle } };
     send(st);
-    /* flush anything queued if the page is closed mid-flight */
+    /* flush anything queued if the page is closed or backgrounded mid-flight —
+       beforeunload alone is unreliable inside a cross-origin LMS iframe */
     window.addEventListener("beforeunload", flush);
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", function () {
+      if (document.visibilityState === "hidden") flush();
+    });
     return true;
   }
 
@@ -114,6 +119,15 @@
     if (!active || !queue.length || flushing) return;
     flushing = true;
     var batch = queue.splice(0, queue.length);
+    /* every completion path funnels through done() — and done() re-fires the
+       flush if anything queued up while this batch was in flight. Without
+       this, a statement emitted right after another one (e.g. the per-try
+       'scored' summary 450 ms after the last 'answered') could sit in the
+       queue forever and be lost when the learner closed the course. */
+    function done() {
+      flushing = false;
+      if (queue.length) flush();
+    }
     var headers = {
       "Content-Type"           : "application/json",
       "X-Experience-API-Version": XAPI_VERSION
@@ -132,22 +146,22 @@
       fetch(endpoint + "statements", opts).then(function (res) {
         if (res.ok) {
           console.log("[MOXapi] " + batch.length + " statement(s) accepted by the LRS");
-          flushing = false;
+          done();
         } else {
           /* the 4xx body names the offending field — surface it verbatim */
           res.text().then(function (body) {
             console.warn("[MOXapi] LRS rejected statements — HTTP " + res.status +
               (body ? " — " + body.slice(0, 400) : ""));
             console.warn("[MOXapi] rejected payload:", JSON.stringify(batch).slice(0, 800));
-            flushing = false;
-          }).catch(function () { flushing = false; });
+            done();
+          }).catch(done);
         }
       }).catch(function (e) {
         console.warn("[MOXapi] POST failed at network level (CORS/proxy?): " + (e && e.message));
         queue = batch.concat(queue);
-        flushing = false;
+        done();
       });
-    } catch (e) { flushing = false; }
+    } catch (e) { done(); }
   }
 
   function send(statement) {
