@@ -1278,7 +1278,14 @@ function boot() {
        "completed" state from one course into all the others */
     var dbg = MOXapi.debug();
     MOScorm.setStoreKey("mo_sim_" + (dbg.activityId || "").replace(/[^a-z0-9]+/gi, "_").slice(-60));
+  } else if (COURSE && COURSE.id) {
+    /* non-xAPI (SCORM/preview): same collision risk, keyed by course id */
+    MOScorm.setStoreKey("mo_sim_local_" + String(COURSE.id).replace(/[^a-z0-9]+/gi, "_").slice(-40));
   }
+  /* the package stamp (set at export time) wipes progress saved by any
+     previous package — a new upload must start the learner from zero */
+  var pkgStamp = (COURSE && COURSE.config && COURSE.config.exportStamp) || null;
+  if (pkgStamp) { state.exportStamp = pkgStamp; MOScorm.setExpectedStamp(pkgStamp); }
   MOScorm.init();
 
   var saved = MOScorm.loadProgress();

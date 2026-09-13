@@ -546,6 +546,10 @@ function exportPackage(fmt) {
 
   // course data with packaged media paths
   var data = JSON.parse(JSON.stringify(course));
+  data.config = data.config || {};
+  /* unique package stamp — the player wipes any saved progress that was
+     written by a different package, so re-uploads always start fresh */
+  data.config.exportStamp = "pk" + Date.now().toString(36);
   data.reels.forEach(function (r, i) {
     if (mediaFiles[i]) { r.src = mediaFiles[i]; r.srcType = "packaged"; }
     else if (cloudVideo && course.reels[i].src && /^https?:/.test(course.reels[i].src)) {

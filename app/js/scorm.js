@@ -84,6 +84,12 @@
      one course's completed state can't leak into another */
   function setStoreKey(k) { if (k) STORE_KEY = String(k); }
 
+  /* every exported package carries a unique stamp; saved state from a
+     different package is wiped on load — re-uploading a course always
+     starts the learner fresh, never resumes the old package's progress */
+  var EXPECTED_STAMP = null;
+  function setExpectedStamp(s) { EXPECTED_STAMP = s || null; }
+
   function loadProgress() {
     if (isLMS) {
       var raw = get("cmi.suspend_data");
@@ -92,7 +98,13 @@
     }
     try {
       var local = localStorage.getItem(STORE_KEY);
-      return local ? JSON.parse(local) : null;
+      if (!local) return null;
+      var saved = JSON.parse(local);
+      if (EXPECTED_STAMP && (!saved || saved.exportStamp !== EXPECTED_STAMP)) {
+        try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+        return null;
+      }
+      return saved;
     } catch (e) { return null; }
   }
 
@@ -175,6 +187,7 @@
     who: who,
     loadProgress: loadProgress,
     setStoreKey: setStoreKey,
+    setExpectedStamp: setExpectedStamp,
     report: report,
     reportInteraction: reportInteraction,
     reset: reset,
