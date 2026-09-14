@@ -565,7 +565,8 @@ function runXapiReport(btn) {
       document.body.appendChild(a); a.click(); a.remove();
       var ppl = {};
       rows.forEach(function (r) { if (r.username || r.email) ppl[r.username || r.email] = 1; });
-        status("Last pull: " + sts.length + " LRS rows scanned · " + rows.length + " rows exported · " + Object.keys(ppl).length + " colleagues · " + new Date().toLocaleTimeString());
+        status("Last pull: " + sts.length + " LRS rows scanned · " + rows.length + " rows exported · " + Object.keys(ppl).length + " colleagues · " + new Date().toLocaleTimeString() +
+          (cfg.simOnly ? " · SIM-only filter ON — Easygenerator/AIVC and other platform courses are excluded (untick in Connection settings to include them)" : ""));
         toast(rows.length + " rows · " + Object.keys(ppl).length + " colleagues → CSV downloaded", 8000);
       });
     })
