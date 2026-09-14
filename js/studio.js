@@ -16,6 +16,7 @@ var selected = -1;
 var sb = null;              // supabase client
 var cloud = false;          // signed-in cloud lane active
 var blobStore = {};         // reelId -> File (local-lane uploads, session only)
+var assessImgStore = {};    // questionId -> File (local-lane assessment images, session only)
 var saveTimer = null;
 var previewTimer = null;
 
@@ -115,7 +116,7 @@ var cloudLane = {
       });
   },
   save: function (c) {
-    var row = { title: c.title, status: c.status, data: c, updated_at: c.updated_at };
+    var row = { title: c.title, status: c.status, data: c, updated_at: c.updated_at, owner: (window.MOUser && window.MOUser.id) || null };
     if (isUuid(c.id)) row.id = c.id;
     return sb.from("sim_courses").upsert(row).select("id").then(function (res) {
       if (res.error) throw res.error;
@@ -249,6 +250,7 @@ function saveCourse() {
   /* embed the results endpoint so the SCORM player can stream per-question rows */
   try {
     var cfg = JSON.parse(localStorage.getItem("simSbConfig") || "null");
+    if ((!cfg || !cfg.url) && window.MOAuth && window.MOAuth.config) cfg = window.MOAuth.config;
     if (cfg && cfg.url && cfg.key) course.config.telemetry = { url: cfg.url, key: cfg.key };
   } catch (e) {}
   lane().save(course).catch(function (e) {
@@ -510,8 +512,14 @@ function exportPackage(fmt) {
   btn.textContent = "Packaging…";
 
   var zip = new JSZip();
+  /* cloud-linked videos stay as URLs — the package ships no video bytes at
+     all for those reels, which is what keeps a 20-reel course small */
+  var cloudVideo = !!(course.config && course.config.cloudVideo);
+  var linked = 0;
   var mediaFiles = course.reels.map(function (r, i) {
-    return r.srcType === "none" ? "" : "media/reel" + (i + 1) + ".mp4";
+    if (r.srcType === "none") return "";
+    if (cloudVideo && r.src && /^https?:/.test(r.src)) { linked++; return ""; }
+    return "media/reel" + (i + 1) + ".mp4";
   });
 
   // tip-card images ride along under their existing media/tips/ paths
@@ -522,12 +530,37 @@ function exportPackage(fmt) {
     });
   });
 
+  // assessment question images — packed under media/assess/ so the package
+  // is self-contained (works whether the image was a session blob or a cloud URL)
+  var assessImgs = [];   // { n, path, file|null, url|null }
+  (course.assessment && course.assessment.questions || []).forEach(function (q, n) {
+    var file = q.id && assessImgStore[q.id];
+    var remote = q.img && /^https?:/.test(q.img);
+    if (!file && !remote) return;
+    var ext = file
+      ? ((file.name.split(".").pop() || "jpg").toLowerCase())
+      : ((q.img.split("?")[0].split(".").pop() || "jpg").toLowerCase());
+    if (!/^(jpg|jpeg|png|webp|gif)$/.test(ext)) ext = "jpg";
+    assessImgs.push({ n: n, path: "media/assess/q" + (n + 1) + "." + ext, file: file || null, url: file ? null : q.img });
+  });
+
   // course data with packaged media paths
   var data = JSON.parse(JSON.stringify(course));
+  data.config = data.config || {};
+  /* unique package stamp — the player wipes any saved progress that was
+     written by a different package, so re-uploads always start fresh */
+  data.config.exportStamp = "pk" + Date.now().toString(36);
   data.reels.forEach(function (r, i) {
     if (mediaFiles[i]) { r.src = mediaFiles[i]; r.srcType = "packaged"; }
-    else { r.src = ""; r.srcType = "none"; }
+    else if (cloudVideo && course.reels[i].src && /^https?:/.test(course.reels[i].src)) {
+      r.src = course.reels[i].src; r.srcType = "storage";   /* linked, not packed */
+    } else { r.src = ""; r.srcType = "none"; }
   });
+  if (data.assessment && data.assessment.questions) {
+    assessImgs.forEach(function (ai) {
+      data.assessment.questions[ai.n].img = ai.path;
+    });
+  }
 
   var jobs = [];
 
@@ -553,6 +586,20 @@ function exportPackage(fmt) {
     }).then(function (blob) { zip.file(p, blob); }));
   });
 
+  assessImgs.forEach(function (ai) {
+    if (ai.file) { zip.file(ai.path, ai.file); return; }
+    /* cloud-hosted image — pack a copy; if it can't be fetched, leave the
+       question pointing at the URL instead of failing the whole export */
+    jobs.push(fetch(ai.url).then(function (res) {
+      if (!res.ok) throw new Error("fetch " + ai.url);
+      return res.blob();
+    }).then(function (blob) {
+      zip.file(ai.path, blob);
+    }).catch(function () {
+      data.assessment.questions[ai.n].img = ai.url;
+    }));
+  });
+
   Promise.all(jobs).then(function () {
     zip.file("js/course.js", "window.MO_COURSE = " + JSON.stringify(data, null, 2) + ";\n");
     if (xapi) zip.file("tincan.xml", tincanXml(course.title));
@@ -568,7 +615,13 @@ function exportPackage(fmt) {
     btn.disabled = false;
     btn.textContent = xapi ? "Export xAPI" : "Export SCORM";
     var mb = (blob.size / 1048576).toFixed(1);
-    toast("Package exported — " + mb + " MB");
+    toast("Package exported — " + mb + " MB" + (linked ? " · " + linked + " video(s) linked from the cloud" : ""));
+    /* non-blocking: keep a versioned copy in the cloud lane */
+    savePackageVersion(fmt, blob).then(function (v) {
+      if (v) toast("Cloud version v" + v + " saved (" + (xapi ? "xAPI" : "SCORM") + ")");
+    }).catch(function () {
+      toast("Cloud version save failed — the downloaded package is unaffected");
+    });
   }).catch(function (e) {
     btn.disabled = false;
     btn.textContent = xapi ? "Export xAPI" : "Export SCORM";
@@ -578,6 +631,67 @@ function exportPackage(fmt) {
 
 function exportScorm() { exportPackage("scorm"); }
 function exportXapi()  { exportPackage("xapi"); }
+
+/* ============================================================
+   Cloud version history — every export also lands in Supabase
+   ============================================================ */
+function savePackageVersion(fmt, blob) {
+  if (!cloud || !sb || !isUuid(course.id) || !(window.MOUser && window.MOUser.id)) return Promise.resolve(null);
+  var uid = window.MOUser.id;
+  return sb.from("sim_package_versions").select("version")
+    .eq("course_id", course.id).eq("format", fmt)
+    .order("version", { ascending: false }).limit(1)
+    .then(function (res) {
+      if (res.error) throw res.error;
+      var v = (res.data && res.data[0] ? res.data[0].version : 0) + 1;
+      var path = uid + "/" + course.id + "/v" + v + "/" + fmt + ".zip";
+      return sb.storage.from("sim-packages").upload(path, blob, { contentType: "application/zip" })
+        .then(function (up) {
+          if (up.error) throw up.error;
+          return sb.from("sim_package_versions").insert({
+            course_id: course.id, owner: uid, version: v, format: fmt,
+            title: course.title, file_path: path, size_bytes: blob.size
+          }).then(function (ins) { if (ins.error) throw ins.error; return v; });
+        });
+    });
+}
+
+function openHistory() {
+  if (!cloud || !sb || !isUuid(course.id)) {
+    toast("Version history needs the cloud lane — sign in and save the series first");
+    return;
+  }
+  var modal = $("historyModal"), host = $("historyList");
+  host.innerHTML = '<p class="course-empty">Loading…</p>';
+  modal.hidden = false;
+  sb.from("sim_package_versions").select("id,version,format,title,file_path,size_bytes,created_at,note")
+    .eq("course_id", course.id)
+    .order("created_at", { ascending: false })
+    .then(function (res) {
+      if (res.error) { host.innerHTML = '<p class="course-empty">Could not load versions.</p>'; return; }
+      if (!res.data || !res.data.length) {
+        host.innerHTML = '<p class="course-empty">No packaged versions yet — export a SCORM or xAPI package and it will appear here.</p>';
+        return;
+      }
+      host.innerHTML = res.data.map(function (r) {
+        return '<div class="course-row" data-path="' + esc(r.file_path) + '">' +
+          '<span class="cr-title">' + esc(r.format === "xapi" ? "xAPI" : "SCORM 1.2") + ' · v' + r.version + '</span>' +
+          '<span class="cr-meta">' + new Date(r.created_at).toLocaleString() + ' · ' +
+            (r.size_bytes / 1048576).toFixed(1) + ' MB</span>' +
+          '<button class="cr-dl">Download</button>' +
+        '</div>';
+      }).join("");
+      host.querySelectorAll(".course-row").forEach(function (row) {
+        row.querySelector(".cr-dl").addEventListener("click", function () {
+          sb.storage.from("sim-packages").createSignedUrl(row.getAttribute("data-path"), 120)
+            .then(function (r2) {
+              if (r2.error || !r2.data) { toast("Could not create a download link"); return; }
+              window.open(r2.data.signedUrl, "_blank");
+            });
+        });
+      });
+    });
+}
 
 
 /* ============================================================
@@ -684,7 +798,34 @@ function wireSettings() {
   }
 
   function blankAsQ() {
-    return { q: "", options: ["", "", ""], answer: 0, why: "" };
+    return { id: "asq-" + Math.random().toString(36).slice(2, 10), q: "", img: "", options: ["", "", ""], answer: 0, why: "" };
+  }
+
+  function handleAsImg(qi, file) {
+    var q = course.assessment.questions[qi];
+    if (!q) return;
+    q.id = q.id || ("asq-" + Math.random().toString(36).slice(2, 10));
+    if (cloud && sb) {
+      var ext = (file.name.split(".").pop() || "jpg").toLowerCase();
+      var path = course.id + "/" + q.id + "." + ext;
+      sb.storage.from("sim-media").upload(path, file, { upsert: true, contentType: file.type || "image/jpeg" })
+        .then(function (res) {
+          if (res.error) { toast("Image upload failed — staying local for this session"); }
+          else {
+            q.img = sb.storage.from("sim-media").getPublicUrl(path).data.publicUrl + "?v=" + Date.now();
+            delete assessImgStore[q.id];
+            renderAsQuestions(); markDirty();
+            return;
+          }
+          assessImgStore[q.id] = file;
+          q.img = URL.createObjectURL(file);
+          renderAsQuestions(); markDirty();
+        });
+    } else {
+      assessImgStore[q.id] = file;
+      q.img = URL.createObjectURL(file);
+      renderAsQuestions(); markDirty();
+    }
   }
 
   function renderAsQuestions() {
@@ -702,6 +843,11 @@ function wireSettings() {
         '<div class="as-qtop"><span class="as-qnum">' + String(qi + 1).padStart(2, "0") + '</span>' +
         '<button class="mini-btn as-qdel" data-q="' + qi + '">Delete</button></div>' +
         '<label class="fld"><span>Question</span><input type="text" data-q="' + qi + '" data-f="q" value="' + escAttr(q.q) + '"></label>' +
+        '<div class="as-img-row">' +
+          (q.img ? '<img class="as-img-prev" src="' + escAttr(q.img) + '" alt="">' : '<span class="as-img-none">No image</span>') +
+          '<label class="mini-btn file-btn">Image<input type="file" class="as-img-file" data-q="' + qi + '" accept="image/*" hidden></label>' +
+          (q.img ? '<button class="mini-btn as-img-del" data-q="' + qi + '">Remove</button>' : "") +
+        '</div>' +
         q.options.map(function (opt, n) {
           return '<div class="opt-row"><input type="radio" name="asCorrect' + qi + '" data-q="' + qi + '" data-n="' + n + '"' +
             (q.answer === n ? " checked" : "") + '>' +
@@ -724,6 +870,22 @@ function wireSettings() {
     host.querySelectorAll("input[type=radio]").forEach(function (rad) {
       rad.addEventListener("change", function () {
         course.assessment.questions[parseInt(rad.getAttribute("data-q"), 10)].answer = parseInt(rad.getAttribute("data-n"), 10);
+        markDirty();
+      });
+    });
+    host.querySelectorAll(".as-img-file").forEach(function (inp) {
+      inp.addEventListener("change", function () {
+        var f = inp.files && inp.files[0];
+        if (f) handleAsImg(parseInt(inp.getAttribute("data-q"), 10), f);
+      });
+    });
+    host.querySelectorAll(".as-img-del").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var q = course.assessment.questions[parseInt(btn.getAttribute("data-q"), 10)];
+        if (!q) return;
+        if (q.id) delete assessImgStore[q.id];
+        q.img = "";
+        renderAsQuestions();
         markDirty();
       });
     });
@@ -765,10 +927,86 @@ function wireSettings() {
     markDirty();
   });
 
+  /* ---------- question bank import (SCORM zip / Word docx) ---------- */
+  var pendingImport = null;
+
+  function escHtml(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+  function impRow(kind, i, title, sub, checked) {
+    return '<label class="imp-row"><input type="checkbox" data-kind="' + kind + '" data-i="' + i + '"' + (checked ? " checked" : "") + '>' +
+      '<span class="imp-body"><b>' + escHtml(title) + '</b>' + (sub ? '<i>' + escHtml(sub) + '</i>' : "") + '</span></label>';
+  }
+
+  function showImportModal(result) {
+    pendingImport = result;
+    var qs = result.questions, rs = result.reels;
+    $("importSummary").textContent = "Found " + qs.length + " question" + (qs.length === 1 ? "" : "s") +
+      (rs.length ? " and " + rs.length + " content section" + (rs.length === 1 ? "" : "s") : "") +
+      " in the " + result.source + ". Untick anything you don't want.";
+    $("importList").innerHTML = qs.map(function (q, i) {
+      var correct = "ABCDE"[q.answer] || "?";
+      return impRow("q", i, (i + 1) + ". " + q.q,
+        q.options.map(function (o, n) { return "ABCDE"[n] + ") " + o; }).join("  ·  ") + "   ✓ " + correct, true);
+    }).join("") || '<p class="as-empty">No questions found.</p>';
+    $("importReelBlock").hidden = !rs.length;
+    $("importReelList").innerHTML = rs.map(function (r, i) {
+      return impRow("r", i, r.title, r.points.join(" · "), false);
+    }).join("");
+    $("importModal").hidden = false;
+  }
+
+  $("btnImportQ").addEventListener("click", function () { $("importFile").click(); });
+  $("importFile").addEventListener("change", function () {
+    var f = $("importFile").files && $("importFile").files[0];
+    $("importFile").value = "";
+    if (!f) return;
+    toast("Reading " + f.name + " …");
+    MOImporter.parse(f).then(showImportModal).catch(function (err) {
+      toast(err && err.message ? err.message : "Import failed — unsupported file");
+    });
+  });
+  $("btnImportCancel").addEventListener("click", function () {
+    $("importModal").hidden = true; pendingImport = null;
+  });
+  $("btnImportConfirm").addEventListener("click", function () {
+    if (!pendingImport) { $("importModal").hidden = true; return; }
+    var pickedQ = [], pickedR = [];
+    $("importList").querySelectorAll("input[type=checkbox]").forEach(function (cb) {
+      if (cb.checked) pickedQ.push(pendingImport.questions[parseInt(cb.getAttribute("data-i"), 10)]);
+    });
+    $("importReelList").querySelectorAll("input[type=checkbox]").forEach(function (cb) {
+      if (cb.checked) pickedR.push(pendingImport.reels[parseInt(cb.getAttribute("data-i"), 10)]);
+    });
+    var a = ensureAssess();
+    pickedQ.forEach(function (q) {
+      var nq = blankAsQ();
+      nq.q = q.q; nq.options = q.options.slice(0, 5); nq.answer = Math.min(q.answer, nq.options.length - 1); nq.why = q.why || "";
+      a.questions.push(nq);
+    });
+    pickedR.forEach(function (r) {
+      var nr = blankReel(course.reels.length + 1);
+      nr.title = r.title;
+      nr.points = [r.points[0] || "", r.points[1] || "", r.points[2] || ""];
+      course.reels.push(nr);
+    });
+    if (pickedQ.length) { a.enabled = true; syncAssessmentPanel(); }
+    if (pickedR.length && typeof renderList === "function") renderList();
+    $("importModal").hidden = true; pendingImport = null;
+    markDirty();
+    toast("Imported " + pickedQ.length + " question" + (pickedQ.length === 1 ? "" : "s") +
+      (pickedR.length ? " and " + pickedR.length + " reel" + (pickedR.length === 1 ? "" : "s") : ""));
+  });
+
   $("btnSettings").addEventListener("click", function () {
     $("settingsModal").hidden = false;
+    $("optCloudVideo").checked = !!(course.config && course.config.cloudVideo);
     syncAssessmentPanel();
     dcSyncPanel();
+  });
+  $("optCloudVideo").addEventListener("change", function () {
+    course.config = course.config || {};
+    course.config.cloudVideo = $("optCloudVideo").checked;
+    markDirty();
   });
   $("btnCloseSettings").addEventListener("click", function () { $("settingsModal").hidden = true; });
   $("btnConnect").addEventListener("click", function () { connectSb(false); });
@@ -786,10 +1024,13 @@ function wireSettings() {
 
   var cfg = null;
   try { cfg = JSON.parse(localStorage.getItem("simSbConfig") || "null"); } catch (e) {}
-  if (cfg) {
+  if (cfg && !window.MOSB) {
     $("sbUrl").value = cfg.url;
     $("sbKey").value = cfg.key;
     connectSb(true);
+  } else if (window.MOSB && cfg) {
+    $("sbUrl").value = cfg.url;
+    $("sbKey").value = cfg.key;
   }
 }
 
@@ -797,6 +1038,12 @@ function wireSettings() {
    Boot
    ============================================================ */
 function boot() {
+  /* prefer the shared auth-gate client (MOAuth) over the manual simSbConfig lane */
+  if (window.MOSB) {
+    sb = window.MOSB;
+    cloud = true;
+    try { if ($("authBlock")) { $("authBlock").hidden = false; showSignedIn((window.MOUser && window.MOUser.email) || "author"); } } catch (e) {}
+  }
   wireEditor();
   wireSettings();
 
@@ -812,6 +1059,8 @@ function boot() {
   $("btnPublish").addEventListener("click", publish);
   $("btnExport").addEventListener("click", exportScorm);
   $("btnExportXapi").addEventListener("click", exportXapi);
+  $("btnHistory").addEventListener("click", openHistory);
+  $("btnCloseHistory").addEventListener("click", function () { $("historyModal").hidden = true; });
   ["dcDomain","dcClientId","dcSecret","dcUser","dcPass"].forEach(function (id) {
     $(id).addEventListener("input", dcSave);
   });
@@ -875,5 +1124,8 @@ function boot() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", boot);
+document.addEventListener("DOMContentLoaded", function () {
+  if (window.MOAuth) MOAuth.require(function () { boot(); });
+  else boot();
+});
 })();

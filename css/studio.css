@@ -124,6 +124,10 @@ body{font-family:var(--sans);background:#0a0908;color:var(--ivory);-webkit-font-
 .fld input{width:100%;background:#0a0908;border:1px solid var(--hairline);border-radius:2px;
   color:var(--ivory);font-family:var(--sans);font-size:14px;font-weight:300;padding:10px 12px}
 .fld input:focus{outline:none;border-color:var(--gold-soft)}
+.as-img-row{display:flex;align-items:center;gap:10px;margin:0 0 10px}
+.as-img-prev{width:84px;height:52px;object-fit:cover;border:1px solid var(--hairline);border-radius:2px}
+.as-img-none{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--ivory-faint)}
+.as-img-row .mini-btn{flex:none}
 .opt-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .opt-row input[type=radio]{accent-color:var(--gold);width:15px;height:15px;flex:none;cursor:pointer}
 .opt-row input[type=text]{flex:1;background:#0a0908;border:1px solid var(--hairline);border-radius:2px;
@@ -177,6 +181,9 @@ body{font-family:var(--sans);background:#0a0908;color:var(--ivory);-webkit-font-
 .course-row .cr-meta{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--ivory-faint)}
 .course-row .cr-del{background:none;border:none;color:var(--ivory-faint);cursor:pointer;font-size:14px;padding:4px}
 .course-row .cr-del:hover{color:#c88}
+.course-row .cr-dl{background:none;border:1px solid var(--gold-soft);color:var(--gold);cursor:pointer;
+  font:inherit;font-size:9px;letter-spacing:.18em;text-transform:uppercase;padding:6px 12px;border-radius:2px}
+.course-row .cr-dl:hover{background:var(--gold);color:#fff}
 .course-empty{font-family:var(--serif);font-style:italic;color:var(--ivory-faint);padding:14px 0}
 .signed-as{font-size:12px;color:var(--ivory-dim)}
 .setup-details{margin-top:22px;border-top:1px solid var(--hairline);padding-top:14px}
@@ -216,3 +223,14 @@ body{font-family:var(--sans);background:#0a0908;color:var(--ivory);-webkit-font-
 .as-qtop{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
 .as-qnum{font-family:var(--serif);font-size:15px;color:var(--gold)}
 .as-qcard .fld{margin-bottom:8px}
+
+/* question bank import */
+.as-qhead-btns{display:flex;gap:8px}
+.imp-list{max-height:40vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.imp-row{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--line,#333);
+  border-radius:10px;cursor:pointer;font-size:13px}
+.imp-row input{margin-top:3px;accent-color:#b9975b}
+.imp-body b{display:block;margin-bottom:3px}
+.imp-body i{display:block;font-style:normal;opacity:.65;font-size:12px;line-height:1.5}
+.imp-reels .modal-h{font-size:14px;margin:14px 0 4px}
+#importModal .modal-card{max-width:640px}
