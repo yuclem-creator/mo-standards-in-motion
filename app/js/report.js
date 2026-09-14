@@ -197,6 +197,17 @@ function dcCourseName(iri) {
   tail = tail.replace(/[-_+.]+/g, " ").replace(/\s+/g, " ").trim();
   return tail.charAt(0).toUpperCase() + tail.slice(1);
 }
+/* resolve an option ID to its human text via the interaction definition
+   (EasyGenerator sends {"choices":[{"id":"1864e…","description":{"en-US":"…"}}]}) */
+function choiceText(def, id) {
+  if (id == null || id === "") return "";
+  var ch = def.choices || def.source || [];
+  for (var i = 0; i < ch.length; i++) {
+    if (String(ch[i].id) === String(id)) return dcLang(ch[i].description) || String(id);
+  }
+  return "";
+}
+
 function dcFlatten(st) {
   var verb = ((st.verb || {}).id || "").split("/").pop();
   var actor = st.actor || {};
@@ -258,12 +269,18 @@ function dcFlatten(st) {
     question_text  : dcLang(def.description),
     topic          : dcLang(def.name),
     response       : result.response || "",
-    response_text  : ext[MO_EXT + "/response-text"] || "",
-    correct_answer : ext[MO_EXT + "/correct-answer"] || "",
-    correct_answer_text : ext[MO_EXT + "/correct-answer-text"] || "",
+    /* SIM rows carry texts via extensions; EasyGenerator-style cmi.interaction
+       rows send option IDs in result.response, resolved here through the
+       interaction definition's choices list */
+    response_text  : ext[MO_EXT + "/response-text"] || choiceText(def, result.response),
+    correct_answer : ext[MO_EXT + "/correct-answer"] || ((def.correctResponsesPattern || [])[0] || ""),
+    correct_answer_text : ext[MO_EXT + "/correct-answer-text"] || choiceText(def, (def.correctResponsesPattern || [])[0]),
     success        : result.success === undefined ? "" : result.success,
     try            : ctxExt[MO_EXT + "/try"] || "",
-    score_raw      : score.raw === undefined ? "" : score.raw,
+    /* some platforms (EasyGenerator) send only a scaled score — derive the
+       percentage so analytics never sees a blank score */
+    score_raw      : score.raw !== undefined ? score.raw
+      : (score.scaled !== undefined ? Math.round(score.scaled * 1000) / 10 : ""),
     score_scaled   : score.scaled === undefined ? "" : score.scaled,
     completion     : result.completion === undefined ? "" : result.completion,
     /* ---- the full statement, field by field ---- */
@@ -282,6 +299,10 @@ function dcFlatten(st) {
     object_activity_type : def.type || "",
     duration       : result.duration || "",
     duration_seconds : dcDurSecs(result.duration),
+    /* filled by dcEstimateDurations for platforms that never send
+       result.duration (EasyGenerator): gap between consecutive events
+       within the same attempt ≈ time spent on that question */
+    duration_est_seconds : "",
     score_min      : score.min === undefined ? "" : score.min,
     score_max      : score.max === undefined ? "" : score.max,
     result_extensions : jsonCell(otherExt),
@@ -306,7 +327,7 @@ var DC_COLS = ["timestamp","verb","colleague","username","email",
   "statement_id","stored","version","actor_object_type","actor_account_homepage",
   "actor_mbox_sha1sum","actor_openid","actor_members","object_id","object_type",
   "object_name","object_description","object_activity_type","duration",
-  "score_min","score_max","duration_seconds","result_extensions","context_instructor","context_team",
+  "score_min","score_max","duration_seconds","duration_est_seconds","result_extensions","context_instructor","context_team",
   "context_platform","context_language","context_revision","context_grouping",
   "context_category","context_other","context_extensions","authority",
   "attachments_count","raw_json"];
@@ -472,6 +493,33 @@ function dcEnrichUsers(rows, cfg) {
   }).catch(function () { return rows; });   /* profiles are a bonus — never block the export */
 }
 
+/* estimate per-question time for platforms that don't send result.duration:
+   within one attempt (registration + course), time on a question ≈ the gap
+   since the previous event. Gaps over 5 minutes are treated as breaks and
+   left blank rather than inflated. */
+function dcEstimateDurations(rows) {
+  var groups = {};
+  rows.forEach(function (r) {
+    var k = (r.registration || "?") + "|" + (r.course_activity || "?");
+    (groups[k] = groups[k] || []).push(r);
+  });
+  Object.keys(groups).forEach(function (k) {
+    var g = groups[k].slice().sort(function (a, b) {
+      return String(a.timestamp).localeCompare(String(b.timestamp));
+    });
+    var prev = 0;
+    g.forEach(function (r) {
+      var t = Date.parse(r.timestamp);
+      if (r.verb === "answered" && r.duration_seconds === "" && prev && t) {
+        var gap = Math.round((t - prev) / 1000);
+        if (gap > 0 && gap <= 300) r.duration_est_seconds = gap;
+      }
+      if (t) prev = t;
+    });
+  });
+  return rows;
+}
+
 function dcCsv(rows) {
   var cols = DC_COLS;
   function cell(v) {
@@ -557,6 +605,7 @@ function runXapiReport(btn) {
           return;
         }
       }
+      dcEstimateDurations(rows);
       return dcEnrichUsers(rows, cfg).then(function () {
         var blob = new Blob([dcCsv(rows)], { type: "text/csv;charset=utf-8" });
       var a = document.createElement("a");
