@@ -922,7 +922,9 @@ function wireSettings() {
     ensureAssess().retryMode = $("asMode").value; markDirty();
   });
   $("btnAddAsQ").addEventListener("click", function () {
-    ensureAssess().questions.push(blankAsQ());
+    var a = ensureAssess();
+    a.questions.push(blankAsQ());
+    if (!a.enabled) { a.enabled = true; syncAssessmentPanel(); }
     renderAsQuestions();
     markDirty();
   });
