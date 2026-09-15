@@ -130,13 +130,13 @@ window.MOImporter = (function () {
   }
 
   /* ---------- Word .docx ----------
-     Convention (blank lines between blocks):
-       Q: What should you do first?        (or:  1. What should you do first?)
-       A) Check the room status
-       B) Ring immediately
-       C) Wait for a witness
-       Correct: A
-       Why: Entering an occupied room breaches guest privacy.   (optional)
+     Two conventions are detected:
+     (a) Lettered:                       (b) SOP checklist style:
+       Q: What should you do first?        Question 1. How can we search…?
+       A) Check the room status            ✓ Open Stay360 or Guest Stay…
+       B) Ring immediately                 ○ Ask Bell to identify…
+       Correct: A                          Rationale: Step 5 — The booking…
+       Why: rationale (optional)
   ------------------------------------- */
 
   function parseDocx(file) {
@@ -176,6 +176,12 @@ window.MOImporter = (function () {
         cur = { q: m[1].trim(), options: [], answer: -1, why: "" };
       } else if (cur && (m = line.match(/^([A-E])\s*[.)]\s*(.+)$/))) {
         cur.options.push(m[2].trim());
+      } else if (cur && (m = line.match(/^([✓✔])\s*(.+)$/))) {
+        /* SOP-style: ✓ marks the correct option, ○ / • mark the rest */
+        cur.answer = cur.options.length;
+        cur.options.push(m[2].trim());
+      } else if (cur && (m = line.match(/^[○◯•·\-–]\s*(.+)$/)) && !/^(?:Why|Rationale|Explanation)\b/i.test(m[1])) {
+        cur.options.push(m[1].trim());
       } else if (cur && (m = line.match(/^(?:Correct(?:\s+answer)?|Answer)\s*[:]\s*([A-E])\b/i))) {
         cur.answer = m[1].toUpperCase().charCodeAt(0) - 65;
       } else if (cur && (m = line.match(/^(?:Why|Rationale|Explanation)\s*[:]\s*(.+)$/i))) {
@@ -184,7 +190,7 @@ window.MOImporter = (function () {
     });
     commit();
     if (!questions.length) {
-      throw new Error("No questions found. Use this format:\nQ: question text\nA) option\nB) option\nC) option\nCorrect: B\nWhy: rationale (optional)");
+      throw new Error("No questions found. Supported formats:\nQ: question / A) option / B) option / Correct: B\nor\nQuestion 1. question / ✓ correct option / ○ other options / Rationale: …");
     }
     return { questions: questions, reels: [], source: "Word file" };
   }
